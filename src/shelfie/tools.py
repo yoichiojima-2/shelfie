@@ -6,55 +6,62 @@ import httpx
 
 log = logging.getLogger(__name__)
 
+GROK_MODEL = "grok-4-fast"
+
 X_SEARCH_SCHEMA = {
     "name": "x_search",
     "description": (
-        "Search recent X (Twitter) posts for a query. Returns up to `limit` posts with "
-        "author handle, timestamp, and text. X content reflects opinion or claim — "
-        "always attribute it (e.g. 'According to @user on X, ...'), never present it as fact."
+        "Search recent X (Twitter) posts about a query via xAI Grok Live Search. "
+        "Returns a brief summary of what's being said on X plus citation URLs. "
+        "X content reflects opinion or claim — always attribute it "
+        "(e.g. 'According to posts on X, ...') and never present it as established fact."
     ),
     "input_schema": {
         "type": "object",
         "properties": {
             "query": {"type": "string", "description": "Search query."},
-            "limit": {"type": "integer", "description": "Max posts (1-100).", "default": 10},
+            "limit": {
+                "type": "integer",
+                "description": "Max X sources to consult (1-30).",
+                "default": 15,
+            },
         },
         "required": ["query"],
     },
 }
 
 
-def x_search(query: str, limit: int = 10) -> str:
-    token = os.environ.get("X_BEARER_TOKEN")
-    if not token:
-        return "Error: X_BEARER_TOKEN not set."
+def x_search(query: str, limit: int = 15) -> str:
+    key = os.environ.get("XAI_API_KEY")
+    if not key:
+        return "Error: XAI_API_KEY not set."
     try:
-        r = httpx.get(
-            "https://api.twitter.com/2/tweets/search/recent",
-            headers={"Authorization": f"Bearer {token}"},
-            params={
-                "query": query,
-                "max_results": max(10, min(limit, 100)),
-                "tweet.fields": "author_id,created_at",
-                "expansions": "author_id",
-                "user.fields": "username",
+        r = httpx.post(
+            "https://api.x.ai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {key}"},
+            json={
+                "model": GROK_MODEL,
+                "messages": [{
+                    "role": "user",
+                    "content": (
+                        f"Summarize what people are currently saying on X about: {query}. "
+                        "Quote handles when relevant and capture any disagreement."
+                    ),
+                }],
+                "search_parameters": {
+                    "mode": "on",
+                    "sources": [{"type": "x"}],
+                    "max_search_results": max(1, min(limit, 30)),
+                    "return_citations": True,
+                },
             },
-            timeout=30.0,
+            timeout=60.0,
         )
         r.raise_for_status()
         body = r.json()
-        users = {u["id"]: u["username"] for u in body.get("includes", {}).get("users", [])}
-        tweets = body.get("data", [])[:limit]
-        out = [
-            {
-                "url": f"https://x.com/{users.get(t['author_id'], 'i')}/status/{t['id']}",
-                "author": users.get(t["author_id"]),
-                "created_at": t.get("created_at"),
-                "text": t["text"],
-            }
-            for t in tweets
-        ]
-        return json.dumps(out, indent=2)
+        summary = body["choices"][0]["message"]["content"]
+        citations = body.get("citations", [])
+        return json.dumps({"summary": summary, "citations": citations}, indent=2)
     except Exception as e:
         log.warning("x_search failed: %s", e)
         return f"Error: {e}"

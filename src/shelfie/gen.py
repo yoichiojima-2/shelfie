@@ -30,8 +30,8 @@ def _build_tools(cfg: Config) -> list[dict]:
         "max_uses": cfg.llm.max_searches,
     }]
     if cfg.enable_x:
-        if not os.environ.get("X_BEARER_TOKEN"):
-            log.warning("enable_x is true but X_BEARER_TOKEN is missing; x_search will return errors")
+        if not os.environ.get("XAI_API_KEY"):
+            log.warning("enable_x is true but XAI_API_KEY is missing; x_search will return errors")
         tools.append(X_SEARCH_SCHEMA)
     return tools
 

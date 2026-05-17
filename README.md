@@ -24,6 +24,6 @@ uv run shelfie add "tidal locking"
 
 ## Optional: X (Twitter)
 
-Set `enable_x: true` in config and `X_BEARER_TOKEN=...` in `.env`. Claude will get an `x_search` tool it can call when recent opinion / news is relevant. X content is always attributed in the article, never presented as fact.
+Set `enable_x: true` in config and `XAI_API_KEY=...` in `.env`. Claude will get an `x_search` tool that uses xAI Grok Live Search (restricted to X as the only source) to pull recent posts. Cheaper than the X API — pay-per-use, no monthly floor. X content is always attributed in the article, never presented as fact.
 
 See `CLAUDE.md` for design.

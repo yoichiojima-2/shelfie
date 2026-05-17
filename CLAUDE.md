@@ -98,13 +98,13 @@ llm:
 
 ```
 ANTHROPIC_API_KEY=...
-X_BEARER_TOKEN=...          # only if enable_x: true
+XAI_API_KEY=...             # only if enable_x: true
 ```
 
 ## Tools available to the model
 
 - **`web_search`** — Anthropic server-managed. The model issues queries and gets back results with citations. We do not implement this; we just attach the tool.
-- **`x_search(query, limit=10)`** — client tool. Optional, off by default. Fetches recent X posts via the X API v2 recent-search endpoint. Returns a JSON-ish text block of tweets with author and timestamp. The prompt instructs the model to attribute X content as opinion / claim, not fact.
+- **`x_search(query, limit=15)`** — client tool. Optional, off by default. Calls xAI Grok Live Search restricted to X as the only source (`sources: [{"type": "x"}]`). Returns Grok's summary of recent X discussion plus citation URLs. Pay-per-use; no X developer account required. The prompt instructs the model to attribute X content as opinion / claim, not fact.
 
 ## Article prompt
 

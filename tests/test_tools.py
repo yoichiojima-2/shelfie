@@ -1,33 +1,53 @@
+import json
+
 import httpx
 import respx
 
 from shelfie import tools
 
 
-def test_x_search_no_token(monkeypatch) -> None:
-    monkeypatch.delenv("X_BEARER_TOKEN", raising=False)
+def test_x_search_no_key(monkeypatch) -> None:
+    monkeypatch.delenv("XAI_API_KEY", raising=False)
     out = tools.x_search("anything")
-    assert "X_BEARER_TOKEN" in out
+    assert "XAI_API_KEY" in out
 
 
 @respx.mock
 def test_x_search_ok(monkeypatch) -> None:
-    monkeypatch.setenv("X_BEARER_TOKEN", "t")
-    respx.get("https://api.twitter.com/2/tweets/search/recent").mock(
+    monkeypatch.setenv("XAI_API_KEY", "k")
+    route = respx.post("https://api.x.ai/v1/chat/completions").mock(
         return_value=httpx.Response(200, json={
-            "data": [{"id": "1", "text": "hello", "author_id": "u1", "created_at": "2026-01-01"}],
-            "includes": {"users": [{"id": "u1", "username": "alice"}]},
+            "choices": [{"message": {"content": "People on X say it's interesting."}}],
+            "citations": ["https://x.com/alice/status/1", "https://x.com/bob/status/2"],
         })
     )
-    out = tools.x_search("topic", limit=1)
-    assert "alice" in out
-    assert "hello" in out
+    out = tools.x_search("topic", limit=5)
+    data = json.loads(out)
+    assert "interesting" in data["summary"]
+    assert len(data["citations"]) == 2
+    sent = json.loads(route.calls[0].request.content)
+    assert sent["search_parameters"]["sources"] == [{"type": "x"}]
+    assert sent["search_parameters"]["max_search_results"] == 5
+    assert sent["model"] == tools.GROK_MODEL
+
+
+@respx.mock
+def test_x_search_clamps_limit(monkeypatch) -> None:
+    monkeypatch.setenv("XAI_API_KEY", "k")
+    route = respx.post("https://api.x.ai/v1/chat/completions").mock(
+        return_value=httpx.Response(200, json={
+            "choices": [{"message": {"content": ""}}], "citations": [],
+        })
+    )
+    tools.x_search("topic", limit=999)
+    sent = json.loads(route.calls[0].request.content)
+    assert sent["search_parameters"]["max_search_results"] == 30
 
 
 @respx.mock
 def test_x_search_http_error(monkeypatch) -> None:
-    monkeypatch.setenv("X_BEARER_TOKEN", "t")
-    respx.get("https://api.twitter.com/2/tweets/search/recent").mock(
+    monkeypatch.setenv("XAI_API_KEY", "k")
+    respx.post("https://api.x.ai/v1/chat/completions").mock(
         return_value=httpx.Response(500)
     )
     out = tools.x_search("topic")
