@@ -1,0 +1,12 @@
+output_dir: ./articles
+language: en
+tone: neutral
+filename_format: "{date}_{slug}.md"
+
+enable_x: false
+
+llm:
+  model: claude-opus-4-7
+  max_tokens: 8000
+  max_searches: 10
+  max_steps: 20
