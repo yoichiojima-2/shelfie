@@ -6,6 +6,8 @@ Build your own Wikipedia. One topic in, one cited Markdown article out.
 
 Re-running on the same topic refines the existing article with the latest information instead of replacing it, so your library gets better the more you run it. History lives in git.
 
+Articles in different languages share the same slug. Asking for an article in a new language (`--language ja`) translates the existing version with terminology verification, so versions stay consistent across languages.
+
 ## Quickstart
 
 ```bash

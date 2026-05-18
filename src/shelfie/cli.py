@@ -14,6 +14,12 @@ def _root() -> None:
     """shelfie"""
 
 
+def _apply(target: object, **overrides: object) -> None:
+    for k, v in overrides.items():
+        if v is not None:
+            setattr(target, k, v)
+
+
 @app.command()
 def add(
     topic: str = typer.Argument(..., help="Topic to write about."),
@@ -31,24 +37,21 @@ def add(
 ) -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     c = cfg_mod.load(config)
-    if output_dir is not None:
-        c.output_dir = output_dir
-    if language is not None:
-        c.language = language
-    if tone is not None:
-        c.tone = tone
-    if filename_format is not None:
-        c.filename_format = filename_format
-    if enable_x is not None:
-        c.enable_x = enable_x
-    if model is not None:
-        c.llm.model = model
-    if max_tokens is not None:
-        c.llm.max_tokens = max_tokens
-    if max_searches is not None:
-        c.llm.max_searches = max_searches
-    if max_steps is not None:
-        c.llm.max_steps = max_steps
+    _apply(
+        c,
+        output_dir=output_dir,
+        language=language,
+        tone=tone,
+        filename_format=filename_format,
+        enable_x=enable_x,
+    )
+    _apply(
+        c.llm,
+        model=model,
+        max_tokens=max_tokens,
+        max_searches=max_searches,
+        max_steps=max_steps,
+    )
     try:
         result = gen.run(topic, c, dry_run=dry_run)
     except ValueError as e:
@@ -57,8 +60,8 @@ def add(
     if dry_run:
         typer.echo(result)
     else:
-        path, updated = result
-        typer.echo(f"{'updated' if updated else 'wrote'} {path}")
+        path, action = result
+        typer.echo(f"{action} {path}")
 
 
 def main() -> None:

@@ -19,10 +19,16 @@ The tool is **vault-agnostic**. It writes `.md` files to a configured directory.
 The agentic loop is the entire architecture:
 
 1. `cli.py` loads `shelfie.config.yaml` and `.env`, then calls `gen.run(topic, cfg)`.
-2. `gen.run` resolves the canonical path for the topic (`{slug}.md` by default). If an article already exists there, it's read and passed into the prompt as the previous version to refine.
-3. `gen.run` sends one user message with `web_search` (server tool) and, if X is enabled, `x_search` (client tool) attached. On a refinement run, the user message tells the model to update the existing article with the latest information rather than start from scratch.
-4. Claude searches, may call `x_search` (in which case we execute it and return tweets), iterates as needed, and returns a final Markdown article with footnote citations.
-5. The result is written to `output_dir/{slug}.md`, overwriting in place. Git is the revision history.
+2. `gen.run` resolves the canonical path for the topic: `output_dir/{language}/{slug}.md`. The slug is the language-independent identity — use the same topic input across languages so the cross-language link works.
+3. Mode selection:
+   - **Refine** — if the article exists in the target language, feed it back to the model as the previous version with instructions to update with the latest info.
+   - **Translate** — if no in-language version exists but the same slug exists in another language, feed that source in with a translation directive (terminology verification, citation preservation).
+   - **Fresh** — write a new article from scratch.
+4. `gen.run` sends one user message with `web_search` (server tool) and, if X is enabled, `x_search` (client tool) attached.
+5. Claude searches, may call `x_search` (in which case we execute it and return tweets), iterates as needed, and returns a final Markdown article with footnote citations.
+6. The result is written to `output_dir/{language}/{slug}.md`, overwriting in place. Git is the revision history.
+
+Prompts live in `src/shelfie/prompt.md` (base), `prompt_update.md` (refine directive), `prompt_translate.md` (translate directive). The Python in `gen.py` loads them via `importlib.resources` and `.format(...)`-substitutes placeholders.
 
 ## Design principles
 
@@ -58,7 +64,9 @@ shelfie/
 │   ├── cfg.py          # YAML + .env loading
 │   ├── tools.py        # x_search client tool
 │   ├── gen.py          # agentic loop + write
-│   └── prompt.md       # system / user prompt
+│   ├── prompt.md       # base article prompt
+│   ├── prompt_update.md     # refinement directive (appended on re-run)
+│   └── prompt_translate.md  # translation directive (appended on cross-language)
 └── tests/
     ├── test_cfg.py
     ├── test_tools.py

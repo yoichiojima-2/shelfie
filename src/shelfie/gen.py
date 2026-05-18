@@ -17,39 +17,34 @@ log = logging.getLogger(__name__)
 _SLUG_REPLACEMENTS = [("++", " plus plus "), ("#", " sharp "), ("&", " and ")]
 
 
-def _prompt(cfg: Config, topic: str, existing: str | None = None) -> str:
-    template = (files("shelfie") / "prompt.md").read_text()
-    base = template.format(
-        topic=topic,
-        today=date.today().isoformat(),
-        language=cfg.language,
-        tone=cfg.tone,
+def _load(name: str) -> str:
+    return (files("shelfie") / name).read_text()
+
+
+def _prompt(
+    cfg: Config,
+    topic: str,
+    *,
+    existing: str | None = None,
+    translate_from: str | None = None,
+    source_lang: str | None = None,
+) -> str:
+    today = date.today().isoformat()
+    base = _load("prompt.md").format(
+        topic=topic, today=today, language=cfg.language, tone=cfg.tone,
     )
-    if existing is None:
-        return base
-    return f"""{base}
-
----
-
-# Update an existing article
-
-A previous version of this article already exists (shown below). Your job is to **improve** it, not replace it wholesale:
-
-- Research the latest information using your tools.
-- Correct anything outdated or wrong.
-- Add new developments, recent debates, and details the previous version missed.
-- Preserve solid content; rewrite only where needed.
-- Preserve the existing `created:` frontmatter date. Add or update an `updated: {date.today().isoformat()}` field.
-- Carry forward useful references; add new ones as you cite new sources.
-
-Output a complete article in the same structure as required above — not a diff, not just the changed sections.
-
-## Existing version
-
-```markdown
-{existing}
-```
-"""
+    if existing is not None:
+        suffix = _load("prompt_update.md").format(today=today, existing=existing)
+        return f"{base}\n\n---\n\n{suffix}"
+    if translate_from is not None:
+        suffix = _load("prompt_translate.md").format(
+            today=today,
+            language=cfg.language,
+            source_lang=source_lang,
+            translate_from=translate_from,
+        )
+        return f"{base}\n\n---\n\n{suffix}"
+    return base
 
 
 def _title(text: str) -> str | None:
@@ -62,18 +57,35 @@ def _title(text: str) -> str | None:
     return front.get("title")
 
 
+def _pick(dirs: list[Path], slug: str, exclude: Path | None = None) -> tuple[Path, str] | None:
+    matches: list[Path] = []
+    for d in dirs:
+        if not d.is_dir():
+            continue
+        canonical = d / f"{slug}.md"
+        if canonical.is_file() and canonical != exclude:
+            matches.append(canonical)
+        matches.extend(p for p in d.glob(f"*_{slug}.md") if p.is_file() and p != exclude)
+    if not matches:
+        return None
+    chosen = max(matches, key=lambda p: p.stat().st_mtime)
+    return chosen, chosen.read_text()
+
+
 def _existing(cfg: Config, slug: str, target: Path) -> tuple[Path, str] | None:
     if target.exists():
         return target, target.read_text()
-    candidates: list[Path] = list(target.parent.glob(f"*_{slug}.md"))
-    if target.parent != cfg.output_dir and cfg.output_dir.exists():
-        candidates.extend(cfg.output_dir.glob(f"*_{slug}.md"))
-        candidates.extend(cfg.output_dir.glob(f"{slug}.md"))
-    legacies = [c for c in candidates if c.is_file() and c != target]
-    if not legacies:
+    dirs = [target.parent]
+    if target.parent != cfg.output_dir:
+        dirs.append(cfg.output_dir)
+    return _pick(dirs, slug, exclude=target)
+
+
+def _translation_source(cfg: Config, slug: str, target_parent: Path) -> tuple[Path, str] | None:
+    if not cfg.output_dir.exists():
         return None
-    chosen = max(legacies, key=lambda p: p.stat().st_mtime)
-    return chosen, chosen.read_text()
+    siblings = [d for d in cfg.output_dir.iterdir() if d.is_dir() and d != target_parent]
+    return _pick(siblings, slug)
 
 
 def _build_tools(cfg: Config) -> list[dict]:
@@ -143,12 +155,13 @@ def _agentic_loop(prompt: str, cfg: Config) -> str:
     raise RuntimeError(f"agentic loop hit max_steps={cfg.llm.max_steps} without finishing")
 
 
-def run(topic: str, cfg: Config, *, dry_run: bool = False) -> tuple[Path, bool] | str:
+def run(topic: str, cfg: Config, *, dry_run: bool = False) -> tuple[Path, str] | str:
     slug = slugify(topic, replacements=_SLUG_REPLACEMENTS)
     target = cfg.output_dir / cfg.language / cfg.filename_format.format(
         date=date.today().isoformat(), slug=slug,
     )
     existing = _existing(cfg, slug, target)
+    translate_from = None
     if existing:
         title = _title(existing[1])
         if title and title.strip().lower() != topic.strip().lower():
@@ -157,10 +170,25 @@ def run(topic: str, cfg: Config, *, dry_run: bool = False) -> tuple[Path, bool] 
                 f"not {topic!r}. Disambiguate with a more specific topic "
                 f"(e.g. 'Mercury (planet)') or rename the existing file."
             )
-    verb = "refining" if existing else "researching"
+        action = "updated"
+        verb = "refining"
+    else:
+        translate_from = _translation_source(cfg, slug, target.parent)
+        if translate_from:
+            action = "translated"
+            verb = f"translating from {translate_from[0].parent.name}"
+        else:
+            action = "wrote"
+            verb = "researching"
     sys.stderr.write(f"{verb} {topic}...\n")
     sys.stderr.flush()
-    prompt = _prompt(cfg, topic, existing[1] if existing else None)
+    prompt = _prompt(
+        cfg,
+        topic,
+        existing=existing[1] if existing else None,
+        translate_from=translate_from[1] if translate_from else None,
+        source_lang=translate_from[0].parent.name if translate_from else None,
+    )
     md = _agentic_loop(prompt, cfg)
     if not md:
         raise RuntimeError("model returned empty article")
@@ -170,4 +198,4 @@ def run(topic: str, cfg: Config, *, dry_run: bool = False) -> tuple[Path, bool] 
     if existing and existing[0] != target:
         existing[0].rename(target)
     target.write_text(md)
-    return target, existing is not None
+    return target, action

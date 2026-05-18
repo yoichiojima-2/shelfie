@@ -79,10 +79,10 @@ def _client_factory(monkeypatch, payloads: list[str]) -> list[FakeClient]:
 def test_run_single_step_writes(tmp_path: Path, monkeypatch) -> None:
     fake = FakeClient([FakeResp(content=[FakeBlock(type="text", text="# Article\n\nbody [^1]")])])
     monkeypatch.setattr(gen.anthropic, "Anthropic", lambda: fake)
-    path, updated = gen.run("tidal locking", _cfg(tmp_path))
+    path, action = gen.run("tidal locking", _cfg(tmp_path))
     assert isinstance(path, Path)
     assert path == tmp_path / "out" / "en" / "tidal-locking.md"
-    assert updated is False
+    assert action == "wrote"
     assert "Article" in path.read_text()
     assert len(fake.messages.calls) == 1
     tools = fake.messages.calls[0]["tools"]
@@ -143,11 +143,11 @@ def test_empty_article_raises(tmp_path: Path, monkeypatch) -> None:
 def test_update_in_place(tmp_path: Path, monkeypatch) -> None:
     _client_factory(monkeypatch, ["# Topic\n\nfirst", "# Topic\n\nsecond"])
     c = _cfg(tmp_path)
-    path1, updated1 = gen.run("topic", c)
-    path2, updated2 = gen.run("topic", c)
+    path1, action1 = gen.run("topic", c)
+    path2, action2 = gen.run("topic", c)
     assert path1 == path2
-    assert updated1 is False
-    assert updated2 is True
+    assert action1 == "wrote"
+    assert action2 == "updated"
     assert path2.read_text() == "# Topic\n\nsecond"
     lang_dir = tmp_path / "out" / "en"
     assert [p.name for p in sorted(lang_dir.iterdir())] == ["topic.md"]
@@ -173,11 +173,11 @@ def test_migrates_legacy_dated_file(tmp_path: Path, monkeypatch) -> None:
     legacy.write_text("old content")
     fake = FakeClient([FakeResp(content=[FakeBlock(type="text", text="new content")])])
     monkeypatch.setattr(gen.anthropic, "Anthropic", lambda: fake)
-    path, updated = gen.run("topic", _cfg(tmp_path))
+    path, action = gen.run("topic", _cfg(tmp_path))
     assert path == out / "en" / "topic.md"
     assert path.read_text() == "new content"
     assert not legacy.exists()
-    assert updated is True
+    assert action == "updated"
     prompt = fake.messages.calls[0]["messages"][0]["content"]
     assert "old content" in prompt
 
@@ -189,11 +189,11 @@ def test_migrates_pre_language_canonical_file(tmp_path: Path, monkeypatch) -> No
     legacy.write_text("old canonical content")
     fake = FakeClient([FakeResp(content=[FakeBlock(type="text", text="new content")])])
     monkeypatch.setattr(gen.anthropic, "Anthropic", lambda: fake)
-    path, updated = gen.run("topic", _cfg(tmp_path))
+    path, action = gen.run("topic", _cfg(tmp_path))
     assert path == out / "en" / "topic.md"
     assert path.read_text() == "new content"
     assert not legacy.exists()
-    assert updated is True
+    assert action == "updated"
 
 
 def test_dry_run_does_not_rename_legacy(tmp_path: Path, monkeypatch) -> None:
@@ -259,7 +259,85 @@ def test_collision_check_skipped_for_legacy_files(tmp_path: Path, monkeypatch) -
     existing.write_text("just plain markdown, no frontmatter")
     fake = FakeClient([FakeResp(content=[FakeBlock(type="text", text="new mercury content")])])
     monkeypatch.setattr(gen.anthropic, "Anthropic", lambda: fake)
-    path, updated = gen.run("mercury", _cfg(tmp_path))
+    path, action = gen.run("mercury", _cfg(tmp_path))
     assert path == existing
     assert path.read_text() == "new mercury content"
-    assert updated is True
+    assert action == "updated"
+
+
+def test_translates_when_other_language_exists(tmp_path: Path, monkeypatch) -> None:
+    en_dir = tmp_path / "out" / "en"
+    en_dir.mkdir(parents=True)
+    source = en_dir / "topic.md"
+    source.write_text("---\ntitle: Topic\n---\n\nEnglish body content here.")
+    fake = FakeClient([FakeResp(content=[FakeBlock(type="text", text="日本語の本文")])])
+    monkeypatch.setattr(gen.anthropic, "Anthropic", lambda: fake)
+    c = _cfg(tmp_path)
+    c.language = "ja"
+    path, action = gen.run("topic", c)
+    assert path == tmp_path / "out" / "ja" / "topic.md"
+    assert action == "translated"
+    assert path.read_text() == "日本語の本文"
+    assert source.read_text() == "---\ntitle: Topic\n---\n\nEnglish body content here."
+    prompt = fake.messages.calls[0]["messages"][0]["content"]
+    assert "English body content here." in prompt
+    assert "Translate an existing article" in prompt
+    assert "`en`" in prompt
+
+
+def test_refine_wins_over_translation(tmp_path: Path, monkeypatch) -> None:
+    en_dir = tmp_path / "out" / "en"
+    ja_dir = tmp_path / "out" / "ja"
+    en_dir.mkdir(parents=True)
+    ja_dir.mkdir(parents=True)
+    (en_dir / "topic.md").write_text("---\ntitle: Topic\n---\n\nEnglish content")
+    (ja_dir / "topic.md").write_text("---\ntitle: Topic\n---\n\n日本語の既存内容")
+    fake = FakeClient([FakeResp(content=[FakeBlock(type="text", text="改訂版")])])
+    monkeypatch.setattr(gen.anthropic, "Anthropic", lambda: fake)
+    c = _cfg(tmp_path)
+    c.language = "ja"
+    path, action = gen.run("topic", c)
+    assert path == ja_dir / "topic.md"
+    assert action == "updated"
+    prompt = fake.messages.calls[0]["messages"][0]["content"]
+    assert "日本語の既存内容" in prompt
+    assert "English content" not in prompt
+    assert "Update an existing article" in prompt
+
+
+def test_translation_picks_most_recent_source(tmp_path: Path, monkeypatch) -> None:
+    en_dir = tmp_path / "out" / "en"
+    fr_dir = tmp_path / "out" / "fr"
+    en_dir.mkdir(parents=True)
+    fr_dir.mkdir(parents=True)
+    en_source = en_dir / "topic.md"
+    fr_source = fr_dir / "topic.md"
+    en_source.write_text("English content")
+    fr_source.write_text("Contenu français")
+    import os as _os
+    _os.utime(en_source, (1_700_000_000, 1_700_000_000))
+    _os.utime(fr_source, (1_800_000_000, 1_800_000_000))
+    fake = FakeClient([FakeResp(content=[FakeBlock(type="text", text="日本語")])])
+    monkeypatch.setattr(gen.anthropic, "Anthropic", lambda: fake)
+    c = _cfg(tmp_path)
+    c.language = "ja"
+    gen.run("topic", c)
+    prompt = fake.messages.calls[0]["messages"][0]["content"]
+    assert "Contenu français" in prompt
+    assert "`fr`" in prompt
+    assert "English content" not in prompt
+
+
+def test_translation_skips_collision_check(tmp_path: Path, monkeypatch) -> None:
+    en_dir = tmp_path / "out" / "en"
+    en_dir.mkdir(parents=True)
+    (en_dir / "mercury.md").write_text(
+        "---\ntitle: Some Other Title\n---\n\nbody"
+    )
+    fake = FakeClient([FakeResp(content=[FakeBlock(type="text", text="ja translation")])])
+    monkeypatch.setattr(gen.anthropic, "Anthropic", lambda: fake)
+    c = _cfg(tmp_path)
+    c.language = "ja"
+    path, action = gen.run("mercury", c)
+    assert action == "translated"
+    assert path == tmp_path / "out" / "ja" / "mercury.md"
