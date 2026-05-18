@@ -71,7 +71,12 @@ def _title(text: str) -> str | None:
     parts = text.split("\n---\n", 2)
     if len(parts) < 2:
         return None
-    front = yaml.safe_load(parts[0][4:]) or {}
+    try:
+        front = yaml.safe_load(parts[0][4:]) or {}
+    except yaml.YAMLError:
+        return None
+    if not isinstance(front, dict):
+        return None
     return front.get("title")
 
 
@@ -281,7 +286,11 @@ def run(
     translate_from = None
     if existing:
         title = _title(existing[1])
-        if title and title.strip().lower() != topic.strip().lower():
+        if (
+            title
+            and title.strip().lower() != topic.strip().lower()
+            and title.isascii() == topic.isascii()
+        ):
             raise ValueError(
                 f"slug collision: {existing[0].name} is titled {title!r}, "
                 f"not {topic!r}. Disambiguate with a more specific topic "

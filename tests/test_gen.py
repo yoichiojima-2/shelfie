@@ -256,6 +256,21 @@ def test_slug_collision_raises(tmp_path: Path, monkeypatch) -> None:
     assert existing.read_text() == "---\ntitle: Mercury (planet)\n---\n\nplanet stuff"
 
 
+def test_collision_skipped_when_title_in_different_script(tmp_path: Path, monkeypatch) -> None:
+    ja_dir = tmp_path / "out" / "ja"
+    ja_dir.mkdir(parents=True)
+    existing = ja_dir / "buddhism.md"
+    existing.write_text("---\ntitle: 仏教\n---\n\n既存の本文")
+    fake = FakeClient([FakeResp(content=[FakeBlock(type="text", text="改訂された本文")])])
+    monkeypatch.setattr(gen.anthropic, "Anthropic", lambda: fake)
+    c = _cfg(tmp_path)
+    c.language = "ja"
+    path, action = gen.run("buddhism", c)
+    assert path == existing
+    assert action == "updated"
+    assert path.read_text() == "改訂された本文"
+
+
 def test_collision_check_skipped_for_legacy_files(tmp_path: Path, monkeypatch) -> None:
     out = tmp_path / "out" / "en"
     out.mkdir(parents=True)
@@ -554,6 +569,15 @@ def test_resolve_topic_typo_without_correction_falls_back(tmp_path: Path, monkey
     monkeypatch.setattr(gen.anthropic, "Anthropic", lambda: fake)
     res = gen.resolve_topic("topic", _cfg(tmp_path))
     assert res.kind == "new"
+
+
+def test_title_returns_none_on_malformed_yaml_frontmatter(tmp_path: Path) -> None:
+    en_dir = tmp_path / "out" / "en"
+    en_dir.mkdir(parents=True)
+    (en_dir / "broken.md").write_text("---\n\n```yaml\ntitle: Foo\n---\n\nbody")
+    (en_dir / "ok.md").write_text("---\ntitle: Ok\n---\n\nbody")
+    inv = gen._inventory(_cfg(tmp_path))
+    assert inv == [("ok", "Ok")]
 
 
 def test_inventory_strips_date_prefix(tmp_path: Path) -> None:
