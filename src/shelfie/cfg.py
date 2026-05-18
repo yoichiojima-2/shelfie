@@ -2,10 +2,12 @@ from pathlib import Path
 
 import yaml
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class LLMCfg(BaseModel):
+    model_config = ConfigDict(validate_assignment=True)
+
     model: str = "claude-opus-4-7"
     max_tokens: int = 8000
     max_searches: int = 10
@@ -13,12 +15,19 @@ class LLMCfg(BaseModel):
 
 
 class Config(BaseModel):
+    model_config = ConfigDict(validate_assignment=True)
+
     output_dir: Path = Path("./articles")
     language: str = "en"
     tone: str = "neutral"
-    filename_format: str = "{date}_{slug}.md"
+    filename_format: str = "{slug}.md"
     enable_x: bool = False
     llm: LLMCfg = Field(default_factory=LLMCfg)
+
+    @field_validator("output_dir")
+    @classmethod
+    def _expand(cls, v: Path) -> Path:
+        return v.expanduser()
 
 
 def load(path: Path | None = None) -> Config:

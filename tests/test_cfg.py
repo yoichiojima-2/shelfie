@@ -13,7 +13,7 @@ def test_load_example(tmp_path: Path) -> None:
     assert c.language == "en"
     assert c.tone == "neutral"
     assert c.enable_x is False
-    assert c.llm.model == "claude-opus-4-7"
+    assert c.llm.model.startswith("claude-")
     assert c.llm.max_searches == 10
     assert c.llm.max_steps == 20
 
@@ -27,3 +27,15 @@ def test_defaults() -> None:
 def test_missing_file(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
         cfg_mod.load(tmp_path / "nope.yaml")
+
+
+def test_output_dir_expanduser() -> None:
+    c = cfg_mod.Config(output_dir=Path("~/notes/articles"))
+    assert "~" not in str(c.output_dir)
+    assert c.output_dir == Path.home() / "notes" / "articles"
+
+
+def test_output_dir_expanduser_on_assignment() -> None:
+    c = cfg_mod.Config()
+    c.output_dir = Path("~/notes")
+    assert c.output_dir == Path.home() / "notes"

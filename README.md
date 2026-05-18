@@ -4,6 +4,8 @@ Build your own Wikipedia. One topic in, one cited Markdown article out.
 
 `shelfie` is a thin wrapper around the Anthropic API with the `web_search` server tool. You give it a topic; Claude searches, fetches, and writes a Wikipedia-style article with footnote citations. Just like asking Claude Code or Codex to write a Wikipedia page — but as a CLI that drops the result into your notes folder.
 
+Re-running on the same topic refines the existing article with the latest information instead of replacing it, so your library gets better the more you run it. History lives in git.
+
 ## Quickstart
 
 ```bash
@@ -13,14 +15,17 @@ cp example.yaml shelfie.config.yaml
 echo "ANTHROPIC_API_KEY=sk-..." > .env
 
 uv run shelfie add "tidal locking"
-# -> ./articles/2026-05-17_tidal-locking.md
+# -> ./articles/tidal-locking.md
+
+# Re-run later to refresh the article with new sources:
+uv run shelfie add "tidal locking"
+# -> updates ./articles/tidal-locking.md
 ```
 
 ## Flags
 
 - `--config PATH` — use a config other than `./shelfie.config.yaml`.
 - `--dry-run` — print the article to stdout instead of writing.
-- `--force` — overwrite an existing file.
 
 ## Optional: X (Twitter)
 

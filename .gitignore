@@ -4,6 +4,7 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .env
+shelfie.config.yaml
 articles/
 dist/
 build/

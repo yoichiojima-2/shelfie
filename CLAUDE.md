@@ -19,9 +19,10 @@ The tool is **vault-agnostic**. It writes `.md` files to a configured directory.
 The agentic loop is the entire architecture:
 
 1. `cli.py` loads `shelfie.config.yaml` and `.env`, then calls `gen.run(topic, cfg)`.
-2. `gen.run` sends one user message ("write an encyclopedia article about X") with `web_search` (server tool) and, if X is enabled, `x_search` (client tool) attached.
-3. Claude searches, may call `x_search` (in which case we execute it and return tweets), iterates as needed, and returns a final Markdown article with footnote citations.
-4. `writer` writes it to `output_dir/{date}_{slug}.md`.
+2. `gen.run` resolves the canonical path for the topic (`{slug}.md` by default). If an article already exists there, it's read and passed into the prompt as the previous version to refine.
+3. `gen.run` sends one user message with `web_search` (server tool) and, if X is enabled, `x_search` (client tool) attached. On a refinement run, the user message tells the model to update the existing article with the latest information rather than start from scratch.
+4. Claude searches, may call `x_search` (in which case we execute it and return tweets), iterates as needed, and returns a final Markdown article with footnote citations.
+5. The result is written to `output_dir/{slug}.md`, overwriting in place. Git is the revision history.
 
 ## Design principles
 
@@ -134,7 +135,7 @@ Lives at `src/shelfie/prompt.md` (loaded via `importlib.resources`). It tells th
 
 ## Out of scope
 
-- Editing or updating existing articles (regenerate; diff manually with git).
+- Maintaining a revision log inside the article (git is the history).
 - Cross-article linking or knowledge graphs.
 - Image generation.
 - Hosting / publishing / syncing.
