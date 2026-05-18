@@ -25,6 +25,10 @@ def add(
     topic: str = typer.Argument(..., help="Topic to write about."),
     config: Path | None = typer.Option(None, "--config", help="Path to shelfie.config.yaml"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Print article to stdout."),
+    instructions: str | None = typer.Option(
+        None, "--instructions",
+        help="Free-form guidance for this run (focus, emphasis, sections to include).",
+    ),
     output_dir: Path | None = typer.Option(None, "--output-dir", help="Override output_dir."),
     language: str | None = typer.Option(None, "--language", help="Override language."),
     tone: str | None = typer.Option(None, "--tone", help="Override tone."),
@@ -53,7 +57,7 @@ def add(
         max_steps=max_steps,
     )
     try:
-        result = gen.run(topic, c, dry_run=dry_run)
+        result = gen.run(topic, c, dry_run=dry_run, instructions=instructions)
     except ValueError as e:
         typer.echo(str(e), err=True)
         raise typer.Exit(1) from e

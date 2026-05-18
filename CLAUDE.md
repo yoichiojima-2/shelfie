@@ -28,7 +28,7 @@ The agentic loop is the entire architecture:
 5. Claude searches, may call `x_search` (in which case we execute it and return tweets), iterates as needed, and returns a final Markdown article with footnote citations.
 6. The result is written to `output_dir/{language}/{slug}.md`, overwriting in place. Git is the revision history.
 
-Prompts live in `src/shelfie/prompt.md` (base), `prompt_update.md` (refine directive), `prompt_translate.md` (translate directive). The Python in `gen.py` loads them via `importlib.resources` and `.format(...)`-substitutes placeholders.
+Prompts live in `src/shelfie/prompt.md` (base), `prompt_update.md` (refine directive), `prompt_translate.md` (translate directive), and `prompt_instructions.md` (per-run user guidance, appended when `--instructions "..."` is set, independent of mode). The Python in `gen.py` loads them via `importlib.resources` and `.format(...)`-substitutes placeholders.
 
 ## Design principles
 
@@ -66,7 +66,8 @@ shelfie/
 │   ├── gen.py          # agentic loop + write
 │   ├── prompt.md       # base article prompt
 │   ├── prompt_update.md     # refinement directive (appended on re-run)
-│   └── prompt_translate.md  # translation directive (appended on cross-language)
+│   ├── prompt_translate.md  # translation directive (appended on cross-language)
+│   └── prompt_instructions.md  # per-run user guidance (appended when --instructions is set)
 └── tests/
     ├── test_cfg.py
     ├── test_tools.py

@@ -28,23 +28,24 @@ def _prompt(
     existing: str | None = None,
     translate_from: str | None = None,
     source_lang: str | None = None,
+    instructions: str | None = None,
 ) -> str:
     today = date.today().isoformat()
-    base = _load("prompt.md").format(
+    parts = [_load("prompt.md").format(
         topic=topic, today=today, language=cfg.language, tone=cfg.tone,
-    )
+    )]
     if existing is not None:
-        suffix = _load("prompt_update.md").format(today=today, existing=existing)
-        return f"{base}\n\n---\n\n{suffix}"
-    if translate_from is not None:
-        suffix = _load("prompt_translate.md").format(
+        parts.append(_load("prompt_update.md").format(today=today, existing=existing))
+    elif translate_from is not None:
+        parts.append(_load("prompt_translate.md").format(
             today=today,
             language=cfg.language,
             source_lang=source_lang,
             translate_from=translate_from,
-        )
-        return f"{base}\n\n---\n\n{suffix}"
-    return base
+        ))
+    if instructions:
+        parts.append(_load("prompt_instructions.md").format(instructions=instructions))
+    return "\n\n---\n\n".join(parts)
 
 
 def _title(text: str) -> str | None:
@@ -155,7 +156,13 @@ def _agentic_loop(prompt: str, cfg: Config) -> str:
     raise RuntimeError(f"agentic loop hit max_steps={cfg.llm.max_steps} without finishing")
 
 
-def run(topic: str, cfg: Config, *, dry_run: bool = False) -> tuple[Path, str] | str:
+def run(
+    topic: str,
+    cfg: Config,
+    *,
+    dry_run: bool = False,
+    instructions: str | None = None,
+) -> tuple[Path, str] | str:
     slug = slugify(topic, replacements=_SLUG_REPLACEMENTS)
     target = cfg.output_dir / cfg.language / cfg.filename_format.format(
         date=date.today().isoformat(), slug=slug,
@@ -188,6 +195,7 @@ def run(topic: str, cfg: Config, *, dry_run: bool = False) -> tuple[Path, str] |
         existing=existing[1] if existing else None,
         translate_from=translate_from[1] if translate_from else None,
         source_lang=translate_from[0].parent.name if translate_from else None,
+        instructions=instructions,
     )
     md = _agentic_loop(prompt, cfg)
     if not md:

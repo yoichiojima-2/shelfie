@@ -328,6 +328,55 @@ def test_translation_picks_most_recent_source(tmp_path: Path, monkeypatch) -> No
     assert "English content" not in prompt
 
 
+def test_instructions_in_fresh_prompt(tmp_path: Path, monkeypatch) -> None:
+    fake = FakeClient([FakeResp(content=[FakeBlock(type="text", text="x")])])
+    monkeypatch.setattr(gen.anthropic, "Anthropic", lambda: fake)
+    gen.run("topic", _cfg(tmp_path), instructions="focus on history")
+    prompt = fake.messages.calls[0]["messages"][0]["content"]
+    assert "User instructions for this run" in prompt
+    assert "focus on history" in prompt
+
+
+def test_instructions_in_refine_prompt(tmp_path: Path, monkeypatch) -> None:
+    en_dir = tmp_path / "out" / "en"
+    en_dir.mkdir(parents=True)
+    (en_dir / "topic.md").write_text("existing english body")
+    fake = FakeClient([FakeResp(content=[FakeBlock(type="text", text="refined")])])
+    monkeypatch.setattr(gen.anthropic, "Anthropic", lambda: fake)
+    gen.run("topic", _cfg(tmp_path), instructions="add recent developments")
+    prompt = fake.messages.calls[0]["messages"][0]["content"]
+    assert "existing english body" in prompt
+    assert "Update an existing article" in prompt
+    assert "User instructions for this run" in prompt
+    assert "add recent developments" in prompt
+    assert prompt.index("Update an existing article") < prompt.index("User instructions for this run")
+
+
+def test_instructions_in_translate_prompt(tmp_path: Path, monkeypatch) -> None:
+    en_dir = tmp_path / "out" / "en"
+    en_dir.mkdir(parents=True)
+    (en_dir / "topic.md").write_text("English source content")
+    fake = FakeClient([FakeResp(content=[FakeBlock(type="text", text="日本語")])])
+    monkeypatch.setattr(gen.anthropic, "Anthropic", lambda: fake)
+    c = _cfg(tmp_path)
+    c.language = "ja"
+    gen.run("topic", c, instructions="prefer scientific Japanese conventions")
+    prompt = fake.messages.calls[0]["messages"][0]["content"]
+    assert "English source content" in prompt
+    assert "Translate an existing article" in prompt
+    assert "User instructions for this run" in prompt
+    assert "prefer scientific Japanese conventions" in prompt
+    assert prompt.index("Translate an existing article") < prompt.index("User instructions for this run")
+
+
+def test_no_instructions_omits_section(tmp_path: Path, monkeypatch) -> None:
+    fake = FakeClient([FakeResp(content=[FakeBlock(type="text", text="x")])])
+    monkeypatch.setattr(gen.anthropic, "Anthropic", lambda: fake)
+    gen.run("topic", _cfg(tmp_path))
+    prompt = fake.messages.calls[0]["messages"][0]["content"]
+    assert "User instructions for this run" not in prompt
+
+
 def test_translation_skips_collision_check(tmp_path: Path, monkeypatch) -> None:
     en_dir = tmp_path / "out" / "en"
     en_dir.mkdir(parents=True)

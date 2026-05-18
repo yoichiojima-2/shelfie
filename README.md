@@ -28,6 +28,7 @@ uv run shelfie add "tidal locking"
 
 - `--config PATH` — use a config other than `./shelfie.config.yaml`.
 - `--dry-run` — print the article to stdout instead of writing.
+- `--instructions TEXT` — per-run guidance for the agent (focus, emphasis, sections to include). Example: `shelfie add "tidal locking" --instructions "include the timeline of theoretical work since 2020"`.
 
 ## Optional: X (Twitter)
 
