@@ -20,7 +20,7 @@ Omit any section that has no content rather than padding it.
 4. `## Background` — origin, history, prerequisites.
 5. `## Details` — substantive body, H2/H3 as needed.
 6. `## Debates and Open Questions` — contested claims.
-7. `## Related Topics` — adjacent topics, names only.
+7. `## Related Topics` — bulleted list of adjacent topics as Obsidian wikilinks (`[[slug]]`). Prefer linking to articles listed under "Existing articles in this vault" (below) when relevant; ghost wikilinks to not-yet-written topics are encouraged.
 8. `## References` — numbered list of all cited sources with URLs.
 
 ## Citation rules

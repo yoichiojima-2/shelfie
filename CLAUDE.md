@@ -28,7 +28,9 @@ The agentic loop is the entire architecture:
 5. Claude searches, may call `x_search` (in which case we execute it and return tweets), iterates as needed, and returns a final Markdown article with footnote citations.
 6. The result is written to `output_dir/{language}/{slug}.md`, overwriting in place. Git is the revision history.
 
-Prompts live in `src/shelfie/prompt.md` (base), `prompt_update.md` (refine directive), `prompt_translate.md` (translate directive), and `prompt_instructions.md` (per-run user guidance, appended when `--instructions "..."` is set, independent of mode). The Python in `gen.py` loads them via `importlib.resources` and `.format(...)`-substitutes placeholders.
+Prompts live in `src/shelfie/prompt.md` (base), `prompt_update.md` (refine directive), `prompt_translate.md` (translate directive), `prompt_instructions.md` (per-run user guidance, appended when `--instructions "..."` is set, independent of mode), and `prompt_links.md` (vault context — slugs + titles of existing articles in the target language so the model can wikilink to them). The Python in `gen.py` loads them via `importlib.resources` and `.format(...)`-substitutes placeholders.
+
+Cross-references between articles use Obsidian-style wikilinks (`[[slug]]`). The `## Related Topics` section is a bulleted list of wikilinks; the model is steered toward linking to existing vault articles when relevant and creating ghost links to not-yet-written topics.
 
 ## Design principles
 
@@ -67,7 +69,8 @@ shelfie/
 │   ├── prompt.md       # base article prompt
 │   ├── prompt_update.md     # refinement directive (appended on re-run)
 │   ├── prompt_translate.md  # translation directive (appended on cross-language)
-│   └── prompt_instructions.md  # per-run user guidance (appended when --instructions is set)
+│   ├── prompt_instructions.md  # per-run user guidance (appended when --instructions is set)
+│   └── prompt_links.md      # vault context: existing articles as wikilink targets
 └── tests/
     ├── test_cfg.py
     ├── test_tools.py

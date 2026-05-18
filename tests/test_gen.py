@@ -328,6 +328,67 @@ def test_translation_picks_most_recent_source(tmp_path: Path, monkeypatch) -> No
     assert "English content" not in prompt
 
 
+def test_vault_links_appear_in_prompt(tmp_path: Path, monkeypatch) -> None:
+    en_dir = tmp_path / "out" / "en"
+    en_dir.mkdir(parents=True)
+    (en_dir / "orbital-mechanics.md").write_text(
+        "---\ntitle: Orbital Mechanics\n---\n\nbody"
+    )
+    fake = FakeClient([FakeResp(content=[FakeBlock(type="text", text="x")])])
+    monkeypatch.setattr(gen.anthropic, "Anthropic", lambda: fake)
+    gen.run("tidal locking", _cfg(tmp_path))
+    prompt = fake.messages.calls[0]["messages"][0]["content"]
+    assert "# Existing articles in this vault" in prompt
+    assert "[[orbital-mechanics]]" in prompt
+    assert "Orbital Mechanics" in prompt
+
+
+def test_vault_excludes_current_target(tmp_path: Path, monkeypatch) -> None:
+    en_dir = tmp_path / "out" / "en"
+    en_dir.mkdir(parents=True)
+    (en_dir / "topic.md").write_text("---\ntitle: Topic\n---\n\nbody")
+    fake = FakeClient([FakeResp(content=[FakeBlock(type="text", text="refined")])])
+    monkeypatch.setattr(gen.anthropic, "Anthropic", lambda: fake)
+    gen.run("topic", _cfg(tmp_path))
+    prompt = fake.messages.calls[0]["messages"][0]["content"]
+    assert "# Existing articles in this vault" not in prompt
+    assert "`[[topic]]`" not in prompt
+
+
+def test_empty_vault_omits_links_section(tmp_path: Path, monkeypatch) -> None:
+    fake = FakeClient([FakeResp(content=[FakeBlock(type="text", text="x")])])
+    monkeypatch.setattr(gen.anthropic, "Anthropic", lambda: fake)
+    gen.run("topic", _cfg(tmp_path))
+    prompt = fake.messages.calls[0]["messages"][0]["content"]
+    assert "# Existing articles in this vault" not in prompt
+
+
+def test_vault_falls_back_to_slug_when_no_title(tmp_path: Path, monkeypatch) -> None:
+    en_dir = tmp_path / "out" / "en"
+    en_dir.mkdir(parents=True)
+    (en_dir / "other.md").write_text("just a body, no frontmatter")
+    fake = FakeClient([FakeResp(content=[FakeBlock(type="text", text="x")])])
+    monkeypatch.setattr(gen.anthropic, "Anthropic", lambda: fake)
+    gen.run("topic", _cfg(tmp_path))
+    prompt = fake.messages.calls[0]["messages"][0]["content"]
+    assert "`[[other]]` — other" in prompt
+
+
+def test_vault_only_includes_current_language(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "out" / "en").mkdir(parents=True)
+    (tmp_path / "out" / "ja").mkdir(parents=True)
+    (tmp_path / "out" / "en" / "foo.md").write_text("---\ntitle: Foo\n---\n\nbody")
+    (tmp_path / "out" / "ja" / "bar.md").write_text("---\ntitle: Bar\n---\n\nbody")
+    fake = FakeClient([FakeResp(content=[FakeBlock(type="text", text="x")])])
+    monkeypatch.setattr(gen.anthropic, "Anthropic", lambda: fake)
+    c = _cfg(tmp_path)
+    c.language = "ja"
+    gen.run("baz", c)
+    prompt = fake.messages.calls[0]["messages"][0]["content"]
+    assert "[[bar]]" in prompt
+    assert "[[foo]]" not in prompt
+
+
 def test_instructions_in_fresh_prompt(tmp_path: Path, monkeypatch) -> None:
     fake = FakeClient([FakeResp(content=[FakeBlock(type="text", text="x")])])
     monkeypatch.setattr(gen.anthropic, "Anthropic", lambda: fake)

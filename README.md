@@ -8,6 +8,8 @@ Re-running on the same topic refines the existing article with the latest inform
 
 Articles in different languages share the same slug. Asking for an article in a new language (`--language ja`) translates the existing version with terminology verification, so versions stay consistent across languages.
 
+Articles cross-reference each other with Obsidian-style wikilinks (`[[slug]]`), so the vault becomes a navigable web — open it in Obsidian for graph view and backlinks. Wikilinks to articles that don't exist yet are encouraged ("ghost links") and act as a queue of topics to write next.
+
 ## Quickstart
 
 ```bash

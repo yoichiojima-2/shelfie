@@ -29,11 +29,16 @@ def _prompt(
     translate_from: str | None = None,
     source_lang: str | None = None,
     instructions: str | None = None,
+    vault: list[tuple[str, str]] | None = None,
 ) -> str:
     today = date.today().isoformat()
     parts = [_load("prompt.md").format(
         topic=topic, today=today, language=cfg.language, tone=cfg.tone,
     )]
+    if vault:
+        parts.append(_load("prompt_links.md").format(
+            language=cfg.language, articles=_format_vault(vault),
+        ))
     if existing is not None:
         parts.append(_load("prompt_update.md").format(today=today, existing=existing))
     elif translate_from is not None:
@@ -56,6 +61,24 @@ def _title(text: str) -> str | None:
         return None
     front = yaml.safe_load(parts[0][4:]) or {}
     return front.get("title")
+
+
+def _vault(cfg: Config, exclude_slug: str) -> list[tuple[str, str]]:
+    lang_dir = cfg.output_dir / cfg.language
+    if not lang_dir.is_dir():
+        return []
+    out: list[tuple[str, str]] = []
+    for f in sorted(lang_dir.glob("*.md")):
+        slug = f.stem
+        if slug == exclude_slug:
+            continue
+        title = _title(f.read_text()) or slug
+        out.append((slug, title))
+    return out
+
+
+def _format_vault(items: list[tuple[str, str]]) -> str:
+    return "\n".join(f"- `[[{slug}]]` — {title}" for slug, title in items)
 
 
 def _pick(dirs: list[Path], slug: str, exclude: Path | None = None) -> tuple[Path, str] | None:
@@ -196,6 +219,7 @@ def run(
         translate_from=translate_from[1] if translate_from else None,
         source_lang=translate_from[0].parent.name if translate_from else None,
         instructions=instructions,
+        vault=_vault(cfg, exclude_slug=slug),
     )
     md = _agentic_loop(prompt, cfg)
     if not md:
