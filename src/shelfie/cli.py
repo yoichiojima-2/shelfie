@@ -56,8 +56,24 @@ def add(
         max_searches=max_searches,
         max_steps=max_steps,
     )
+    slug_override: str | None = None
+    if not gen.canonical_exists(topic, c):
+        res = gen.resolve_topic(topic, c)
+        if res.kind == "typo" and res.corrected_topic:
+            if typer.confirm(f"Did you mean '{res.corrected_topic}'?", default=True):
+                topic = res.corrected_topic
+        elif res.kind == "duplicate" and res.matched_slug:
+            msg = (
+                f"This looks like the same topic as '{res.matched_slug}.md' "
+                f"({res.matched_title!r}). Refine that instead?"
+            )
+            if typer.confirm(msg, default=True):
+                topic = res.matched_title or topic
+                slug_override = res.matched_slug
     try:
-        result = gen.run(topic, c, dry_run=dry_run, instructions=instructions)
+        result = gen.run(
+            topic, c, dry_run=dry_run, instructions=instructions, slug=slug_override,
+        )
     except ValueError as e:
         typer.echo(str(e), err=True)
         raise typer.Exit(1) from e

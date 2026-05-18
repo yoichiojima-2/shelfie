@@ -54,6 +54,10 @@ class FakeMessages:
         self.calls.append(kwargs)
         return FakeStream(self.responses.pop(0))
 
+    def create(self, **kwargs: Any) -> FakeResp:
+        self.calls.append(kwargs)
+        return self.responses.pop(0)
+
 
 class FakeClient:
     def __init__(self, responses: list[FakeResp]):
@@ -451,3 +455,111 @@ def test_translation_skips_collision_check(tmp_path: Path, monkeypatch) -> None:
     path, action = gen.run("mercury", c)
     assert action == "translated"
     assert path == tmp_path / "out" / "ja" / "mercury.md"
+
+
+def test_run_accepts_slug_override(tmp_path: Path, monkeypatch) -> None:
+    en_dir = tmp_path / "out" / "en"
+    en_dir.mkdir(parents=True)
+    (en_dir / "llm.md").write_text("---\ntitle: Large Language Model\n---\n\nold body")
+    fake = FakeClient([FakeResp(content=[FakeBlock(type="text", text="new body")])])
+    monkeypatch.setattr(gen.anthropic, "Anthropic", lambda: fake)
+    path, action = gen.run("Large Language Model", _cfg(tmp_path), slug="llm")
+    assert path == en_dir / "llm.md"
+    assert action == "updated"
+    assert path.read_text() == "new body"
+
+
+def test_canonical_exists_true_when_file_present(tmp_path: Path) -> None:
+    en_dir = tmp_path / "out" / "en"
+    en_dir.mkdir(parents=True)
+    (en_dir / "topic.md").write_text("body")
+    assert gen.canonical_exists("topic", _cfg(tmp_path)) is True
+
+
+def test_canonical_exists_false_when_absent(tmp_path: Path) -> None:
+    assert gen.canonical_exists("topic", _cfg(tmp_path)) is False
+
+
+def test_resolve_topic_empty_inventory_typo(tmp_path: Path, monkeypatch) -> None:
+    fake = FakeClient([FakeResp(content=[FakeBlock(
+        type="text",
+        text='{"kind":"typo","corrected_topic":"buddhism","reason":"common misspelling"}',
+    )])])
+    monkeypatch.setattr(gen.anthropic, "Anthropic", lambda: fake)
+    res = gen.resolve_topic("buddism", _cfg(tmp_path))
+    assert res.kind == "typo"
+    assert res.corrected_topic == "buddhism"
+    prompt = fake.messages.calls[0]["messages"][0]["content"]
+    assert "(empty)" in prompt
+    assert "buddism" in prompt
+
+
+def test_resolve_topic_duplicate(tmp_path: Path, monkeypatch) -> None:
+    en_dir = tmp_path / "out" / "en"
+    en_dir.mkdir(parents=True)
+    (en_dir / "llm.md").write_text("---\ntitle: Large Language Model\n---\n\nbody")
+    fake = FakeClient([FakeResp(content=[FakeBlock(
+        type="text",
+        text='{"kind":"duplicate","matched_slug":"llm","reason":"common abbreviation"}',
+    )])])
+    monkeypatch.setattr(gen.anthropic, "Anthropic", lambda: fake)
+    res = gen.resolve_topic("large language model", _cfg(tmp_path))
+    assert res.kind == "duplicate"
+    assert res.matched_slug == "llm"
+    assert res.matched_title == "Large Language Model"
+    prompt = fake.messages.calls[0]["messages"][0]["content"]
+    assert "llm — Large Language Model" in prompt
+
+
+def test_resolve_topic_new(tmp_path: Path, monkeypatch) -> None:
+    en_dir = tmp_path / "out" / "en"
+    en_dir.mkdir(parents=True)
+    (en_dir / "physics.md").write_text("---\ntitle: Physics\n---\n\nbody")
+    fake = FakeClient([FakeResp(content=[FakeBlock(
+        type="text", text='{"kind":"new","reason":"no overlap"}',
+    )])])
+    monkeypatch.setattr(gen.anthropic, "Anthropic", lambda: fake)
+    res = gen.resolve_topic("tidal locking", _cfg(tmp_path))
+    assert res.kind == "new"
+    assert res.corrected_topic is None
+    assert res.matched_slug is None
+
+
+def test_resolve_topic_invalid_json_falls_back_to_new(tmp_path: Path, monkeypatch) -> None:
+    fake = FakeClient([FakeResp(content=[FakeBlock(type="text", text="not json at all")])])
+    monkeypatch.setattr(gen.anthropic, "Anthropic", lambda: fake)
+    res = gen.resolve_topic("topic", _cfg(tmp_path))
+    assert res.kind == "new"
+    assert "parse failed" in res.reason
+
+
+def test_resolve_topic_duplicate_with_unknown_slug_falls_back(tmp_path: Path, monkeypatch) -> None:
+    en_dir = tmp_path / "out" / "en"
+    en_dir.mkdir(parents=True)
+    (en_dir / "llm.md").write_text("---\ntitle: Large Language Model\n---\n\nbody")
+    fake = FakeClient([FakeResp(content=[FakeBlock(
+        type="text",
+        text='{"kind":"duplicate","matched_slug":"made-up","reason":"hallucinated"}',
+    )])])
+    monkeypatch.setattr(gen.anthropic, "Anthropic", lambda: fake)
+    res = gen.resolve_topic("topic", _cfg(tmp_path))
+    assert res.kind == "new"
+    assert "not in inventory" in res.reason
+
+
+def test_resolve_topic_typo_without_correction_falls_back(tmp_path: Path, monkeypatch) -> None:
+    fake = FakeClient([FakeResp(content=[FakeBlock(
+        type="text", text='{"kind":"typo","reason":"missing field"}',
+    )])])
+    monkeypatch.setattr(gen.anthropic, "Anthropic", lambda: fake)
+    res = gen.resolve_topic("topic", _cfg(tmp_path))
+    assert res.kind == "new"
+
+
+def test_inventory_strips_date_prefix(tmp_path: Path) -> None:
+    en_dir = tmp_path / "out" / "en"
+    en_dir.mkdir(parents=True)
+    (en_dir / "2024-01-15_topic.md").write_text("---\ntitle: Topic\n---\n\nbody")
+    (en_dir / "untitled.md").write_text("no frontmatter")
+    inv = gen._inventory(_cfg(tmp_path))
+    assert inv == [("topic", "Topic")]

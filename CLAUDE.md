@@ -19,16 +19,17 @@ The tool is **vault-agnostic**. It writes `.md` files to a configured directory.
 The agentic loop is the entire architecture:
 
 1. `cli.py` loads `shelfie.config.yaml` and `.env`, then calls `gen.run(topic, cfg)`.
-2. `gen.run` resolves the canonical path for the topic: `output_dir/{language}/{slug}.md`. The slug is the language-independent identity — use the same topic input across languages so the cross-language link works.
-3. Mode selection:
+2. **Topic resolution.** Before calling `gen.run`, `cli.py` checks whether the canonical file already exists. If not, it calls `gen.resolve_topic(topic, cfg)` — a short, no-tools Claude call that, given the user input and the in-language inventory, returns one of: `new`, `typo` (with a suggested correction), or `duplicate` (matching an existing slug). The CLI then prompts the user `[Y/n]` and, on confirm, redirects to the corrected topic or refines the matched article via `gen.run(..., slug=<matched>)`.
+3. `gen.run` resolves the canonical path for the topic: `output_dir/{language}/{slug}.md`. The slug is the language-independent identity — use the same topic input across languages so the cross-language link works.
+4. Mode selection:
    - **Refine** — if the article exists in the target language, feed it back to the model as the previous version with instructions to update with the latest info.
    - **Translate** — if no in-language version exists but the same slug exists in another language, feed that source in with a translation directive (terminology verification, citation preservation).
    - **Fresh** — write a new article from scratch.
-4. `gen.run` sends one user message with `web_search` (server tool) and, if X is enabled, `x_search` (client tool) attached.
-5. Claude searches, may call `x_search` (in which case we execute it and return tweets), iterates as needed, and returns a final Markdown article with footnote citations.
-6. The result is written to `output_dir/{language}/{slug}.md`, overwriting in place. Git is the revision history.
+5. `gen.run` sends one user message with `web_search` (server tool) and, if X is enabled, `x_search` (client tool) attached.
+6. Claude searches, may call `x_search` (in which case we execute it and return tweets), iterates as needed, and returns a final Markdown article with footnote citations.
+7. The result is written to `output_dir/{language}/{slug}.md`, overwriting in place. Git is the revision history.
 
-Prompts live in `src/shelfie/prompt.md` (base), `prompt_update.md` (refine directive), `prompt_translate.md` (translate directive), `prompt_instructions.md` (per-run user guidance, appended when `--instructions "..."` is set, independent of mode), and `prompt_links.md` (vault context — slugs + titles of existing articles in the target language so the model can wikilink to them). The Python in `gen.py` loads them via `importlib.resources` and `.format(...)`-substitutes placeholders.
+Prompts live in `src/shelfie/prompt.md` (base), `prompt_update.md` (refine directive), `prompt_translate.md` (translate directive), `prompt_instructions.md` (per-run user guidance, appended when `--instructions "..."` is set, independent of mode), `prompt_links.md` (vault context — slugs + titles of existing articles in the target language so the model can wikilink to them), and `prompt_resolve.md` (pre-generation resolver: asks the model to classify the input as new/typo/duplicate against the in-language inventory). The Python in `gen.py` loads them via `importlib.resources` and `.format(...)`-substitutes placeholders.
 
 Cross-references between articles use Obsidian-style wikilinks (`[[slug]]`). The `## Related Topics` section is a bulleted list of wikilinks; the model is steered toward linking to existing vault articles when relevant and creating ghost links to not-yet-written topics.
 
@@ -70,9 +71,11 @@ shelfie/
 │   ├── prompt_update.md     # refinement directive (appended on re-run)
 │   ├── prompt_translate.md  # translation directive (appended on cross-language)
 │   ├── prompt_instructions.md  # per-run user guidance (appended when --instructions is set)
-│   └── prompt_links.md      # vault context: existing articles as wikilink targets
+│   ├── prompt_links.md      # vault context: existing articles as wikilink targets
+│   └── prompt_resolve.md    # pre-generation resolver: classify input as new/typo/duplicate
 └── tests/
     ├── test_cfg.py
+    ├── test_cli.py
     ├── test_tools.py
     └── test_gen.py
 ```

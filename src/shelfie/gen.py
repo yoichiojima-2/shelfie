@@ -1,9 +1,12 @@
+import json
 import logging
 import os
 import sys
+from dataclasses import dataclass
 from datetime import date
 from importlib.resources import files
 from pathlib import Path
+from typing import Literal
 
 import anthropic
 import yaml
@@ -15,6 +18,15 @@ from .tools import X_SEARCH_SCHEMA, x_search
 log = logging.getLogger(__name__)
 
 _SLUG_REPLACEMENTS = [("++", " plus plus "), ("#", " sharp "), ("&", " and ")]
+
+
+@dataclass
+class Resolution:
+    kind: Literal["new", "typo", "duplicate"]
+    corrected_topic: str | None = None
+    matched_slug: str | None = None
+    matched_title: str | None = None
+    reason: str = ""
 
 
 def _load(name: str) -> str:
@@ -112,6 +124,79 @@ def _translation_source(cfg: Config, slug: str, target_parent: Path) -> tuple[Pa
     return _pick(siblings, slug)
 
 
+def _slug_from_path(path: Path) -> str:
+    stem = path.stem
+    if "_" in stem:
+        prefix, rest = stem.split("_", 1)
+        try:
+            date.fromisoformat(prefix)
+            return rest
+        except ValueError:
+            pass
+    return stem
+
+
+def _inventory(cfg: Config) -> list[tuple[str, str]]:
+    lang_dir = cfg.output_dir / cfg.language
+    if not lang_dir.is_dir():
+        return []
+    out: list[tuple[str, str]] = []
+    for path in sorted(lang_dir.glob("*.md")):
+        title = _title(path.read_text())
+        if title:
+            out.append((_slug_from_path(path), title))
+    return out
+
+
+def canonical_exists(topic: str, cfg: Config) -> bool:
+    slug = slugify(topic, replacements=_SLUG_REPLACEMENTS)
+    target = cfg.output_dir / cfg.language / cfg.filename_format.format(
+        date=date.today().isoformat(), slug=slug,
+    )
+    return _existing(cfg, slug, target) is not None
+
+
+def resolve_topic(topic: str, cfg: Config) -> Resolution:
+    inventory = _inventory(cfg)
+    inventory_lines = "\n".join(f"- {s} — {t}" for s, t in inventory) or "(empty)"
+    prompt = _load("prompt_resolve.md").format(
+        topic=topic, language=cfg.language, inventory=inventory_lines,
+    )
+    client = anthropic.Anthropic()
+    resp = client.messages.create(
+        model=cfg.llm.model,
+        max_tokens=256,
+        system="Respond with JSON only. No preamble, no code fences.",
+        messages=[{"role": "user", "content": prompt}],
+    )
+    text = "".join(b.text for b in resp.content if b.type == "text").strip()
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        log.warning("resolver returned invalid JSON: %r", text[:200])
+        return Resolution(kind="new", reason="resolver parse failed")
+    if not isinstance(data, dict):
+        return Resolution(kind="new", reason="resolver returned non-object")
+    kind = data.get("kind")
+    reason = data.get("reason") or ""
+    if kind == "typo":
+        corrected = data.get("corrected_topic")
+        if not isinstance(corrected, str) or not corrected.strip():
+            return Resolution(kind="new", reason="typo without correction")
+        return Resolution(kind="typo", corrected_topic=corrected.strip(), reason=reason)
+    if kind == "duplicate":
+        slug = data.get("matched_slug")
+        if not isinstance(slug, str):
+            return Resolution(kind="new", reason="duplicate without slug")
+        match = next(((s, t) for s, t in inventory if s == slug), None)
+        if match is None:
+            return Resolution(kind="new", reason=f"matched_slug {slug!r} not in inventory")
+        return Resolution(
+            kind="duplicate", matched_slug=match[0], matched_title=match[1], reason=reason,
+        )
+    return Resolution(kind="new", reason=reason)
+
+
 def _build_tools(cfg: Config) -> list[dict]:
     tools: list[dict] = [{
         "type": "web_search_20250305",
@@ -185,8 +270,10 @@ def run(
     *,
     dry_run: bool = False,
     instructions: str | None = None,
+    slug: str | None = None,
 ) -> tuple[Path, str] | str:
-    slug = slugify(topic, replacements=_SLUG_REPLACEMENTS)
+    if slug is None:
+        slug = slugify(topic, replacements=_SLUG_REPLACEMENTS)
     target = cfg.output_dir / cfg.language / cfg.filename_format.format(
         date=date.today().isoformat(), slug=slug,
     )
