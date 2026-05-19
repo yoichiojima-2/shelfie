@@ -30,7 +30,7 @@ class Resolution:
 
 
 def _load(name: str) -> str:
-    return (files("shelfie") / name).read_text()
+    return (files("shelfie.prompts") / f"{name}.md").read_text()
 
 
 def _prompt(
@@ -44,24 +44,24 @@ def _prompt(
     vault: list[tuple[str, str]] | None = None,
 ) -> str:
     today = date.today().isoformat()
-    parts = [_load("prompt.md").format(
+    parts = [_load("base").format(
         topic=topic, today=today, language=cfg.language, tone=cfg.tone,
     )]
     if vault:
-        parts.append(_load("prompt_links.md").format(
+        parts.append(_load("links").format(
             language=cfg.language, articles=_format_vault(vault),
         ))
     if existing is not None:
-        parts.append(_load("prompt_update.md").format(today=today, existing=existing))
+        parts.append(_load("update").format(today=today, existing=existing))
     elif translate_from is not None:
-        parts.append(_load("prompt_translate.md").format(
+        parts.append(_load("translate").format(
             today=today,
             language=cfg.language,
             source_lang=source_lang,
             translate_from=translate_from,
         ))
     if instructions:
-        parts.append(_load("prompt_instructions.md").format(instructions=instructions))
+        parts.append(_load("instructions").format(instructions=instructions))
     return "\n\n---\n\n".join(parts)
 
 
@@ -164,7 +164,7 @@ def canonical_exists(topic: str, cfg: Config) -> bool:
 def resolve_topic(topic: str, cfg: Config) -> Resolution:
     inventory = _inventory(cfg)
     inventory_lines = "\n".join(f"- {s} — {t}" for s, t in inventory) or "(empty)"
-    prompt = _load("prompt_resolve.md").format(
+    prompt = _load("resolve").format(
         topic=topic, language=cfg.language, inventory=inventory_lines,
     )
     client = anthropic.Anthropic()
