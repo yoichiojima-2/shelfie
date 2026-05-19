@@ -29,7 +29,7 @@ The agentic loop is the entire architecture:
 6. Claude searches, may call `x_search` (in which case we execute it and return tweets), iterates as needed, and returns a final Markdown article with footnote citations.
 7. The result is written to `output_dir/{language}/{slug}.md`, overwriting in place. Git is the revision history.
 
-Prompts live in `src/shelfie/prompt.md` (base), `prompt_update.md` (refine directive), `prompt_translate.md` (translate directive), `prompt_instructions.md` (per-run user guidance, appended when `--instructions "..."` is set, independent of mode), `prompt_links.md` (vault context — slugs + titles of existing articles in the target language so the model can wikilink to them), and `prompt_resolve.md` (pre-generation resolver: asks the model to classify the input as new/typo/duplicate against the in-language inventory). The Python in `gen.py` loads them via `importlib.resources` and `.format(...)`-substitutes placeholders.
+Prompts live in `src/shelfie/prompts/` — `base.md` (article), `update.md` (refine directive), `translate.md` (translate directive), `instructions.md` (per-run user guidance, appended when `--instructions "..."` is set, independent of mode), `links.md` (vault context — slugs + titles of existing articles in the target language so the model can wikilink to them), and `resolve.md` (pre-generation resolver: asks the model to classify the input as new/typo/duplicate against the in-language inventory). The Python in `gen.py` loads them via `importlib.resources` and `.format(...)`-substitutes placeholders.
 
 Cross-references between articles use Obsidian-style wikilinks (`[[slug]]`). The `## Related Topics` section is a bulleted list of wikilinks; the model is steered toward linking to existing vault articles when relevant and creating ghost links to not-yet-written topics.
 
@@ -67,12 +67,14 @@ shelfie/
 │   ├── cfg.py          # YAML + .env loading
 │   ├── tools.py        # x_search client tool
 │   ├── gen.py          # agentic loop + write
-│   ├── prompt.md       # base article prompt
-│   ├── prompt_update.md     # refinement directive (appended on re-run)
-│   ├── prompt_translate.md  # translation directive (appended on cross-language)
-│   ├── prompt_instructions.md  # per-run user guidance (appended when --instructions is set)
-│   ├── prompt_links.md      # vault context: existing articles as wikilink targets
-│   └── prompt_resolve.md    # pre-generation resolver: classify input as new/typo/duplicate
+│   └── prompts/
+│       ├── __init__.py
+│       ├── base.md         # base article prompt
+│       ├── update.md       # refinement directive (appended on re-run)
+│       ├── translate.md    # translation directive (appended on cross-language)
+│       ├── instructions.md # per-run user guidance (appended when --instructions is set)
+│       ├── links.md        # vault context: existing articles as wikilink targets
+│       └── resolve.md      # pre-generation resolver: classify input as new/typo/duplicate
 └── tests/
     ├── test_cfg.py
     ├── test_cli.py
@@ -124,7 +126,7 @@ XAI_API_KEY=...             # only if enable_x: true
 
 ## Article prompt
 
-Lives at `src/shelfie/prompt.md` (loaded via `importlib.resources`). It tells the model:
+Lives at `src/shelfie/prompts/base.md` (loaded via `importlib.resources`). It tells the model:
 
 - The output is a Wikipedia-style Markdown article on `{topic}`.
 - Required sections: frontmatter (YAML), `# Topic`, `## Overview`, `## Background`, `## Details`, `## Debates and Open Questions`, `## Related Topics`, `## References`.
