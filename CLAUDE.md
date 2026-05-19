@@ -90,7 +90,7 @@ uv sync                                # local dev
 
 # In a directory with shelfie.config.yaml + .env
 uv run shelfie add "tidal locking"
-# -> ./articles/2026-05-17_tidal-locking.md
+# -> ./articles/en/tidal-locking.md
 ```
 
 ## Configuration
@@ -101,7 +101,6 @@ uv run shelfie add "tidal locking"
 output_dir: ./articles
 language: en
 tone: neutral
-filename_format: "{date}_{slug}.md"
 
 enable_x: false             # set true to give Claude the x_search tool
 

@@ -155,9 +155,7 @@ def _inventory(cfg: Config) -> list[tuple[str, str]]:
 
 def canonical_exists(topic: str, cfg: Config) -> bool:
     slug = slugify(topic, replacements=_SLUG_REPLACEMENTS)
-    target = cfg.output_dir / cfg.language / cfg.filename_format.format(
-        date=date.today().isoformat(), slug=slug,
-    )
+    target = cfg.output_dir / cfg.language / f"{slug}.md"
     return _existing(cfg, slug, target) is not None
 
 
@@ -215,12 +213,6 @@ def _build_tools(cfg: Config) -> list[dict]:
     return tools
 
 
-def _run_tool(name: str, tool_input: dict) -> str:
-    if name == "x_search":
-        return x_search(tool_input["query"], tool_input.get("limit", 10))
-    return f"Error: unknown tool {name}"
-
-
 def _agentic_loop(prompt: str, cfg: Config) -> str:
     client = anthropic.Anthropic()
     tools = _build_tools(cfg)
@@ -256,7 +248,7 @@ def _agentic_loop(prompt: str, cfg: Config) -> str:
         results = []
         for block in resp.content:
             if block.type == "tool_use":
-                output = _run_tool(block.name, block.input)
+                output = x_search(block.input["query"], block.input.get("limit", 10))
                 results.append({
                     "type": "tool_result",
                     "tool_use_id": block.id,
@@ -279,9 +271,7 @@ def run(
 ) -> tuple[Path, str] | str:
     if slug is None:
         slug = slugify(topic, replacements=_SLUG_REPLACEMENTS)
-    target = cfg.output_dir / cfg.language / cfg.filename_format.format(
-        date=date.today().isoformat(), slug=slug,
-    )
+    target = cfg.output_dir / cfg.language / f"{slug}.md"
     existing = _existing(cfg, slug, target)
     translate_from = None
     if existing:
