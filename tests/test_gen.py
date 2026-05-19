@@ -1,5 +1,4 @@
 from dataclasses import dataclass, field
-from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -220,16 +219,6 @@ def test_language_subdir(tmp_path: Path, monkeypatch) -> None:
     c.language = "ja"
     path, _ = gen.run("topic", c)
     assert path == tmp_path / "out" / "ja" / "topic.md"
-
-
-def test_keeps_date_prefix_when_format_has_date(tmp_path: Path, monkeypatch) -> None:
-    fake = FakeClient([FakeResp(content=[FakeBlock(type="text", text="md")])])
-    monkeypatch.setattr(gen.anthropic, "Anthropic", lambda: fake)
-    c = _cfg(tmp_path)
-    c.filename_format = "{date}_{slug}.md"
-    path, _ = gen.run("topic", c)
-    assert path.name == f"{date.today().isoformat()}_topic.md"
-    assert path.parent.name == "en"
 
 
 def test_slug_replacements() -> None:

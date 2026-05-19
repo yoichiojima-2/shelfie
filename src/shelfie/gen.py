@@ -155,9 +155,7 @@ def _inventory(cfg: Config) -> list[tuple[str, str]]:
 
 def canonical_exists(topic: str, cfg: Config) -> bool:
     slug = slugify(topic, replacements=_SLUG_REPLACEMENTS)
-    target = cfg.output_dir / cfg.language / cfg.filename_format.format(
-        date=date.today().isoformat(), slug=slug,
-    )
+    target = cfg.output_dir / cfg.language / cfg.filename_format.format(slug=slug)
     return _existing(cfg, slug, target) is not None
 
 
@@ -279,9 +277,7 @@ def run(
 ) -> tuple[Path, str] | str:
     if slug is None:
         slug = slugify(topic, replacements=_SLUG_REPLACEMENTS)
-    target = cfg.output_dir / cfg.language / cfg.filename_format.format(
-        date=date.today().isoformat(), slug=slug,
-    )
+    target = cfg.output_dir / cfg.language / cfg.filename_format.format(slug=slug)
     existing = _existing(cfg, slug, target)
     translate_from = None
     if existing:
