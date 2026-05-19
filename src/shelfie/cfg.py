@@ -20,7 +20,6 @@ class Config(BaseModel):
     output_dir: Path = Path("./articles")
     language: str = "en"
     tone: str = "neutral"
-    filename_format: str = "{slug}.md"
     enable_x: bool = False
     llm: LLMCfg = Field(default_factory=LLMCfg)
 

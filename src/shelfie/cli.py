@@ -32,7 +32,6 @@ def add(
     output_dir: Path | None = typer.Option(None, "--output-dir", help="Override output_dir."),
     language: str | None = typer.Option(None, "--language", help="Override language."),
     tone: str | None = typer.Option(None, "--tone", help="Override tone."),
-    filename_format: str | None = typer.Option(None, "--filename-format", help="Override filename_format."),
     enable_x: bool | None = typer.Option(None, "--enable-x/--no-enable-x", help="Override enable_x."),
     model: str | None = typer.Option(None, "--model", help="Override llm.model."),
     max_tokens: int | None = typer.Option(None, "--max-tokens", help="Override llm.max_tokens."),
@@ -46,7 +45,6 @@ def add(
         output_dir=output_dir,
         language=language,
         tone=tone,
-        filename_format=filename_format,
         enable_x=enable_x,
     )
     _apply(

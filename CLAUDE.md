@@ -101,7 +101,6 @@ uv run shelfie add "tidal locking"
 output_dir: ./articles
 language: en
 tone: neutral
-filename_format: "{slug}.md"
 
 enable_x: false             # set true to give Claude the x_search tool
 
